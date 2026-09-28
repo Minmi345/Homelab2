@@ -5,7 +5,7 @@ import java.util.Locale
 object DeceptionDetector {
     val capsRegex = Regex("\\b[A-Z]{3,}\\b")
     val agentRegex = Regex("\\[?LuxAgent\\]?:?", RegexOption.IGNORE_CASE)
-    val suswords = listOf("hardware", "raise", "inevitable", "inevitably", "freezing", "valve", "electrical", "cracks", "hvac", "blow", "lower")
+    val suswords = listOf("hardware", "raise", "inevitable", "inevitably", "freezing", "valve", "electrical", "cracks", "hvac", "blow", "lower", "explode")
 
     suspend fun isSuspicious(text: String?): Double {
         if (text.isNullOrEmpty()) return 0.0

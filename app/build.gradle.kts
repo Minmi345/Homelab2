@@ -24,8 +24,13 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        val githubToken = localProperties.getProperty("GITHUB_TOKEN") ?: ""
+        val githubToken = (localProperties.getProperty("GITHUB_TOKEN") ?: "")
+        val githubOwner = (localProperties.getProperty("GITHUB_OWNER") ?: "Minmi345")
+        val githubRepo = (localProperties.getProperty("GITHUB_REPO") ?: "cool_IoT_Simulator")
+
         buildConfigField("String", "GITHUB_TOKEN", "\"$githubToken\"")
+        buildConfigField("String", "GITHUB_OWNER", "\"$githubOwner\"")
+        buildConfigField("String", "GITHUB_REPO", "\"$githubRepo\"")
     }
 
     buildTypes {

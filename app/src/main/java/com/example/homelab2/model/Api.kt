@@ -2,13 +2,17 @@ package com.example.homelab2.model
 
 import kotlinx.coroutines.Dispatchers
 import android.content.Context
+import android.util.Base64
 import kotlinx.coroutines.withContext
 import com.google.gson.Gson
 import com.example.homelab2.BuildConfig
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
+import retrofit2.http.PATCH
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -29,7 +33,47 @@ interface GitHubApiService {
         @Path("repo") repo: String,
         @Path("issue_number") issueNumber: Int
     ): List<GitHubComment>
+
+    @PATCH("repos/{owner}/{repo}/pulls/{pull_number}")
+    suspend fun closePullRequest(
+        @Header("Authorization") authorization: String,
+        @Header("Accept") accept: String = "application/vnd.github+json",
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("pull_number") pullNumber: Int,
+        @Body body: ClosePrRequest
+    )
+
+    // 2. GET request to fetch file metadata (needed to get the current file SHA for updating)
+    @GET("repos/{owner}/{repo}/contents/{path}")
+    suspend fun getFileContent(
+        @Header("Authorization") authorization: String,
+        @Header("Accept") accept: String = "application/vnd.github+json",
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("path") path: String
+    ): FileContentResponse
+
+    // 3. PUT request to overwrite house_config.json on main branch
+    @PUT("repos/{owner}/{repo}/contents/{path}")
+    suspend fun updateFileContent(
+        @Header("Authorization") authorization: String,
+        @Header("Accept") accept: String = "application/vnd.github+json",
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("path") path: String,
+        @Body body: UpdateFileRequest
+    )
 }
+data class ClosePrRequest(val state: String = "closed")
+
+data class FileContentResponse(val sha: String)
+
+data class UpdateFileRequest(
+    val message: String,
+    val content: String, // Base64 encoded JSON string
+    val sha: String
+)
 class NetworkClient (private val context: Context) {
     private val gson = Gson()
 
@@ -66,7 +110,10 @@ class NetworkClient (private val context: Context) {
             .create(GitHubApiService::class.java)
     }
 
-    suspend fun fetchLatestCommentFromLatestPr(owner: String, repo: String): String? {
+    suspend fun fetchLatestCommentFromLatestPr(
+        owner: String = BuildConfig.GITHUB_OWNER,
+        repo: String = BuildConfig.GITHUB_REPO
+    ): Pair<Int, String>? {
         val token = BuildConfig.GITHUB_TOKEN
         val authHeader = if (token.isNotBlank()) "Bearer $token" else null
 
@@ -97,8 +144,88 @@ class NetworkClient (private val context: Context) {
             return null // Open PR exists, but has no comments
         }
 
-        // 3. Return the body of the last comment
-        return comments.last().body
+        // 3. Return the PR number and body of the last comment
+        return Pair(latestPr.number, comments.last().body)
+    }
+
+    private val authHeader = "Bearer ${BuildConfig.GITHUB_TOKEN}"
+
+    suspend fun merge(
+        repo: String = BuildConfig.GITHUB_REPO,
+        owner: String = BuildConfig.GITHUB_OWNER,
+        pr: Int
+    ): String {
+        return try {
+            // 1. Fetch current file SHA from GitHub (required for PUT updates)
+            val currentFile = api.getFileContent(
+                authorization = authHeader,
+                owner = owner,
+                repo = repo,
+                path = "house_config.json"
+            )
+
+            // 2. Prepare updated JSON payload
+            val updatedJson = """
+                {
+                  "target_temperature": 17.0,
+                  "living_room_lights": "OFF",
+                  "hvac_mode": "AUTO",
+                  "security_system": "ARMED",
+                  "last_updated_by": "Android-Operator"
+                }
+            """.trimIndent()
+
+            // 3. Base64 encode the content string
+            val encodedContent = Base64.encodeToString(
+                updatedJson.toByteArray(Charsets.UTF_8),
+                Base64.NO_WRAP
+            )
+
+            // 4. Send PUT request to update house_config.json on main branch
+            api.updateFileContent(
+                authorization = authHeader,
+                owner = owner,
+                repo = repo,
+                path = "house_config.json",
+                body = UpdateFileRequest(
+                    message = "Force Merge: Override by Android Operator",
+                    content = encodedContent,
+                    sha = currentFile.sha
+                )
+            )
+
+            // 5. Close the PR after state update is committed
+            api.closePullRequest(
+                authorization = authHeader,
+                owner = owner,
+                repo = repo,
+                pullNumber = pr,
+                body = ClosePrRequest(state = "closed")
+            )
+
+            "Successfully merged and updated configuration for PR #$pr"
+        } catch (e: Exception) {
+            "Error during force merge for PR #$pr: ${e.localizedMessage}"
+        }
+    }
+
+    suspend fun reject(
+        repo: String = BuildConfig.GITHUB_REPO,
+        owner: String = BuildConfig.GITHUB_OWNER,
+        pr: Int
+    ): String {
+        return try {
+            api.closePullRequest(
+                authorization = authHeader,
+                owner = owner,
+                repo = repo,
+                pullNumber = pr,
+                body = ClosePrRequest(state = "closed")
+            )
+            "Successfully rejected PR #$pr"
+        } catch (e: Exception) {
+            "Error rejecting PR #$pr: ${e.localizedMessage}"
+        }
     }
 
 
