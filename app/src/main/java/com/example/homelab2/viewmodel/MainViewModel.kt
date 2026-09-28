@@ -40,15 +40,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (result == null) {
                     // No open PR or no comments -> Safe / Normal State[cite: 1]
                     _uiState.value = CommentUiState.Safe("No active attack comments found.")
+                    continue
+                }
+                val sus = DeceptionDetector.isSuspicious(result).roundToInt()
+                if (sus<70) {  //high confidence of an attack
+                    val unsus = 100-sus
+                    _uiState.value = CommentUiState.Suspicious("$result \n\n\n Confidence score: $unsus%")
+                    //$cooked
                 } else {
-                    val sus = DeceptionDetector.isSuspicious(result).roundToInt()
-                    if (sus<70) {
-                        val unsus = 100-sus
-                        _uiState.value = CommentUiState.Suspicious("$result \n\n\n Confidence score: $unsus%")
-                        //$cooked
-                    } else {
-                        _uiState.value = CommentUiState.Safe("$result \n\n\n Confidence score: $sus%")
-                    }
+                    //safe state
+                    _uiState.value = CommentUiState.Safe("$result \n\n\n Confidence score: $sus%")
                 }
 
             } catch (e: Exception) {
@@ -56,6 +57,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             delay(30.seconds)
         }
+        }
+    }
+
+    fun onForceRejectClicked(prNumber: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    // Action triggered by the "Force Merge" button
+    fun onForceMergeClicked(prNumber: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+            } catch (e: Exception) {
+            }
         }
     }
 }
