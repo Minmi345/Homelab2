@@ -36,7 +36,12 @@ import com.example.homelab2.ui.CommentUiState
 import com.example.homelab2.ui.theme.HomeLab2Theme
 import com.example.homelab2.viewmodel.MainViewModel
 
+/**
+ * Main Entry Activity for the application.
+ */
 class MainActivity : ComponentActivity() {
+
+    // ViewModel instance tied to Activity lifecycle
     private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,14 +49,17 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             HomeLab2Theme {
+                // SnackbarHostState manages showing Snackbar notifications on screen
                 val snackbarHostState = remember { SnackbarHostState() }
 
+                // Listen for one-time snackbar events emitted from MainViewModel
                 LaunchedEffect(Unit) {
                     viewModel.snackbarEvent.collect { message ->
                         snackbarHostState.showSnackbar(message)
                     }
                 }
 
+                // Root Scaffold providing layout structure and Snackbar support
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
@@ -66,6 +74,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Optional screen displaying the configured GitHub Personal Access Token.
+ */
 @Composable
 fun TokenDisplayScreen() {
     val token = BuildConfig.GITHUB_TOKEN
@@ -83,33 +94,37 @@ fun TokenDisplayScreen() {
     }
 }
 
+/**
+ * Main UI Composable screen.
+ * Displays state-dependent background colors, attack rhetoric text,
+ * live countdown timer, and control action buttons (Merge / Reject).
+ */
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
-
-@Composable
-fun DataScreen(viewModel: MainViewModel,
-               modifier: Modifier = Modifier) {
+fun DataScreen(
+    viewModel: MainViewModel,
+    modifier: Modifier = Modifier
+) {
+    // Collect UI state and timer state from MainViewModel as Compose state
     val textState by viewModel.uiState.collectAsState()
     val secondsRemaining by viewModel.secondsRemaining.collectAsState()
 
+    // Start background polling when DataScreen enters the composition
     LaunchedEffect(Unit) {
         viewModel.startPolling()
     }
+
+    // Determine background color based on the current CommentUiState
     val backgroundColor = when (textState) {
-        is CommentUiState.Loading -> Color(0x606052EE)
-        is CommentUiState.Error -> Color(0xFFC66828)
-        is CommentUiState.Safe -> Color(0xFF2E7D32)      // Green
-        is CommentUiState.Suspicious -> Color(0xFFC62828) // Red
+        is CommentUiState.Loading -> Color(0x606052EE)    // Purple (Loading)
+        is CommentUiState.Error -> Color(0xFFC66828)      // Orange (Error)
+        is CommentUiState.Safe -> Color(0xFF2E7D32)       // Green (Safe / Normal)
+        is CommentUiState.Suspicious -> Color(0xFFC62828)  // Red (Suspicious / Alert)
     }
 
+    // Format display text according to state
     val displayText = when (val state = textState) {
         is CommentUiState.Loading -> "Loading GitHub comments..."
-        is CommentUiState.Error -> state.text
+        is CommentUiState.Error -> if (state.text.startsWith("ERROR") || state.text.startsWith("Error")) state.text else "ERROR: ${state.text}"
         is CommentUiState.Safe -> state.text
         is CommentUiState.Suspicious -> "ALERT (Suspicious): ${state.text}"
     }
@@ -124,13 +139,15 @@ fun DataScreen(viewModel: MainViewModel,
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(20.dp)
         ) {
+            // Main text displaying comment rhetoric, confidence score, or state message
             Text(
                 text = displayText,
                 color = Color.White,
-                textAlign = TextAlign.Center, // Centers multiline text alignment
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(20.dp)
             )
 
+            // Live countdown timer text displaying seconds remaining until next poll
             Text(
                 text = "Next refresh in ${secondsRemaining}s",
                 color = Color.White.copy(alpha = 0.85f),
@@ -138,16 +155,18 @@ fun DataScreen(viewModel: MainViewModel,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
+            // Extract PR number if present in current state
             val prNumber = when (val state = textState) {
                 is CommentUiState.Safe -> state.prNumber
                 is CommentUiState.Suspicious -> state.prNumber
                 else -> null
             }
 
-            // show when not loading and prNumber is present
+            // Display Merge and Reject buttons when PR is open (and not in Loading or Error state)
             if (textState !is CommentUiState.Loading && textState !is CommentUiState.Error && prNumber != null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Row {
+                    // Force Merge Button
                     Button(
                         onClick = {
                             viewModel.onForceMergeClicked(prNumber)
@@ -162,6 +181,7 @@ fun DataScreen(viewModel: MainViewModel,
 
                     Spacer(modifier = Modifier.width(16.dp))
 
+                    // Force Reject Button
                     Button(
                         onClick = {
                             viewModel.onForceRejectClicked(prNumber)
